@@ -29,6 +29,11 @@
     "tilt_pin": 19,
     "use_motor": false
   },
+  "bluetooth":{
+    "use_bluetooth": false,
+    "bluetooth_address": "69:96:1C:04:00:58",
+    "bluetooth_char_uuid": "0000ffe1-0000-1000-8000-00805f9b34fb"
+  },
   "change_text":{
     "春": "ハロ"
   },

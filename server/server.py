@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from pathlib import Path
 from fastapi.responses import JSONResponse
 from datetime import datetime, timedelta
+from fake_memory.search_diary import search_diaries
 
 
 app = FastAPI(title="Halo Server")
@@ -75,6 +76,26 @@ async def get_summary(date_int: int) -> JSONResponse:
         return JSONResponse(content={"date": date_str, "content": content}, media_type="application/json; charset=utf-8")
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# エンドポイント: キーワードで日記を検索する
+@app.get("/diary/search")
+async def search_diary_by_keyword(keyword: str) -> JSONResponse:
+    try:
+        if not keyword:
+            raise HTTPException(status_code=400, detail="Keyword cannot be empty")
+        # 同期処理をスレッドに逃がして非同期対応
+        results = await asyncio.to_thread(search_diaries, keyword)
+        return JSONResponse(
+            content={
+                "keyword": keyword,
+                "matches": results,
+                "count": len(results),
+            },
+            media_type="application/json; charset=utf-8",
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

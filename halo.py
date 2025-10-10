@@ -49,7 +49,7 @@ class Halo:
         self.farewell_word_pattern = re.compile(self.farewell_word)
 
         self.motor_controller = MotorController(self.config)
-        self.command_selector = CommandSelector()
+        self.command_selector = CommandSelector(general_config=self.config)
         self.llm = LLM()
         self.stt = self.load_stt(self.stt_type)
         self.asr_coherence_filter = ASRCoherenceFilter()

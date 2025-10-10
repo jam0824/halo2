@@ -1,12 +1,11 @@
 import asyncio
 from bleak import BleakClient
 
-ADDRESS = "69:96:1C:04:00:58"
-CHAR_UUID = "0000ffe1-0000-1000-8000-00805f9b34fb"  # Write/Notify対象
+
 
 
 class CarController:
-    def __init__(self, address: str, char_uuid: str):
+    def __init__(self, address: str = "69:96:1C:04:00:58", char_uuid: str = "0000ffe1-0000-1000-8000-00805f9b34fb"):
         self.address = address
         self.char_uuid = char_uuid
         self.client: BleakClient | None = None
@@ -42,10 +41,10 @@ class CarController:
         await self._send(b"B#")
 
     async def left(self):
-        await self._send(b"C#")
+        await self._send(b"E#")
 
     async def right(self):
-        await self._send(b"D#")
+        await self._send(b"F#")
 
     async def stop(self):
         await self._send(b"0#")
@@ -68,20 +67,3 @@ class CarController:
                 print("RX:", text)
         except Exception as e:
             print("RX error:", e)
-
-
-# Example usage
-async def main():
-    car = CarController(ADDRESS, CHAR_UUID)
-    await car.connect()
-
-    # 2秒前進 → 2秒停止してデータ受信
-    await car.forward()
-    await asyncio.sleep(2)
-
-    await car.stop()
-    await asyncio.sleep(5)  # DATを数回受信して表示
-
-    await car.disconnect()
-
-asyncio.run(main())
