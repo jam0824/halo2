@@ -33,7 +33,7 @@ class VoiceVoxTTSPipelined:
       - skip_current(): 今の文だけ中断して次の文へ（軽量スキップ）
     """
 
-    _SENT_END = re.compile(r"[、。．！？!?]\s*$")  # 文末検出
+    _SENT_END = re.compile(r"[、。．！！？!?]\s*$")  # 文末検出
 
     def __init__(
         self,

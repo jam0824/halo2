@@ -16,5 +16,4 @@ class RandomAction:
             print("random_action")
             if self.config["motor"]["use_motor"]:
                 self.motor_controller.motor_pan_kyoro_kyoro(3, 2)
-                self.motor_controller.motor_tilt_kyoro_kyoro(2)
             self.reset_timer()
