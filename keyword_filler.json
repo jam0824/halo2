@@ -28,7 +28,7 @@
       "いいね！{keyword}気になる！",
       "お、やっぱり{keyword}なんだ！",
       "ほぉ〜{keyword}とは！",
-      "へぇ、{keyword}って初めて聞いた！",
+      "{keyword}っていいね。",
       "そうかそうか、{keyword}かぁ。",
       "なるほど〜！{keyword}いいね！",
       "確かに、{keyword}面白そう！",
@@ -44,7 +44,7 @@
       "なるほどなるほど、{keyword}面白い！",
       "やっぱり{keyword}だよね！",
       "ふむふむ、{keyword}気になる！",
-      "おおっと、{keyword}とは！",
+      "おおっと、{keyword}ね！",
       "へぇ〜なるほど、{keyword}ね！"
     ],
     "keyword_filler_add": [

@@ -176,7 +176,7 @@ class JapaneseNounExtractor:
             })
         return list_tokens
         
-    async def make_keyword_filler_async(self, text: str, your_name: str) -> str:
+    async def make_keyword_filler_async(self, text: str, your_name: str) -> tuple[str, str]:
         nouns = await asyncio.to_thread(self.extract, text)
         # your_name を除外
         try:
@@ -196,7 +196,7 @@ class JapaneseNounExtractor:
 
                 return_message = random.choice(list_main).format(keyword=listNouns[0], your_name=your_name)
                 #return_message += random.choice(list_add).format(keyword=nouns[0])
-                return return_message
+                return return_message, listNouns[0]
         return ""
     def reset_keyword_filler(self) -> None:
         self.count = 0

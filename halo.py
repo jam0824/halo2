@@ -1,10 +1,11 @@
 import re
 import json
 import urllib.request
+import urllib.parse
 import threading
 import asyncio
 import time
-from typing import Optional, Union
+from typing import Optional, Union, Callable
 
 from command_selector import CommandSelector
 from llm import LLM
@@ -47,6 +48,7 @@ class Halo:
         self.similarity_threshold: float = self.config["similarity_threshold"]
         self.farewell_word: str = self.config["farewell_word"]
         self.farewell_word_pattern = re.compile(self.farewell_word)
+        self.fake_memory_endpoint: str = self.config["fake_memory"]["fake_memory_endpoint"]
 
         self.motor_controller = MotorController(self.config)
         self.command_selector = CommandSelector(general_config=self.config)
@@ -72,6 +74,7 @@ class Halo:
         # fake_memory用
         self.fake_memory_text = self.get_fake_diary_text(self.config)
         self.fake_summary_text = self.get_fake_summary_text(self.config)
+        self.search_memory_text = ""
         
         self.corr_gate = self.init_corr_gate(self.config.get("vad", {}))
         self.tts = self.init_tts(self.tts_config)
@@ -152,6 +155,57 @@ class Halo:
         except Exception as e:
             print(f"fake_memory取得エラー: {e}")
             return
+
+    def _search_fake_memory_by_keyword_sync(self, keyword: str, fake_memory_endpoint: str) -> str:
+        """
+        同期版: fake_memory 検索エンドポイントを叩き、キーワードにマッチした本文を結合して返す。
+        戻り値: マッチ本文を\n\nで結合したテキスト（該当なしは空文字）
+        """
+        try:
+            base_url = fake_memory_endpoint + "search"
+            q = urllib.parse.urlencode({"keyword": keyword})
+            url = f"{base_url}?{q}"
+            print(url)
+            req = urllib.request.Request(url, headers={"Accept": "application/json"})
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                charset = resp.headers.get_content_charset() or "utf-8"
+                body_text = resp.read().decode(charset, errors="replace")
+            data = json.loads(body_text)
+            matches = data.get("matches", {}) or {}
+            listTexts = []
+            for _path, text in matches.items():
+                if isinstance(text, str) and text:
+                    listTexts.append(text)
+            return "\n\n".join(listTexts)
+        except Exception as e:
+            print(f"search_fake_memory_by_keyword_sync エラー: {e}")
+            return ""
+
+    def _search_fake_memory_by_keyword(self, keyword: str, fake_memory_endpoint: str, on_done: Optional[Callable[[str], None]] = None) -> threading.Thread:
+        """
+        非ブロッキング版: 別スレッドで検索し、完了時に on_done(result) を呼ぶ。
+        戻り値: 起動した Thread（daemon）
+        """
+        def _run():
+            result = self._search_fake_memory_by_keyword_sync(keyword, fake_memory_endpoint)
+            # 好みで共有フィールドへも格納（必要なら使用）
+            try:
+                self.search_memory_text = result
+            except Exception as e:
+                print(f"search_fake_memory_by_keyword エラー: {e}")
+                pass
+            if on_done is not None:
+                try:
+                    on_done(result)
+                except Exception as e:
+                    print(f"search_fake_memory_by_keyword エラー: {e}")
+                    pass
+
+        th = threading.Thread(target=_run, name="fake_memory_search", daemon=True)
+        th.start()
+        return th
+
+    
 
     # ---------- pre warm up ----------
     def pre_warm_up(self, stt, llm, llm_model, system_content):
@@ -253,7 +307,7 @@ class Halo:
                         print(f"コマンド実行エラー: {e}")
 
                     print("LLMで応答を生成中...")
-                    system_memory = self.system_content + self.fake_memory_text
+                    system_memory = self.system_content + self.fake_memory_text + self.search_memory_text
                     self.response = ""
                     for delta in self.llm.stream_generate_text(self.llm_model, user_text, system_memory, self.history):
                         if not delta:
@@ -318,12 +372,14 @@ class Halo:
                         if not self.isfiller:
                             return
                         # 普通名詞・固有名詞でフィラーを生成
-                        keyword_filler = asyncio.run(self.janome.make_keyword_filler_async(txt, self.your_name))
+                        keyword_filler, keyword = asyncio.run(self.janome.make_keyword_filler_async(txt, self.your_name))
                         if keyword_filler != "":
                             print(f"[keyword_filler] {keyword_filler}")
                             if self.tts_pipelined.is_object_playing():
                                 self.tts_pipelined.barge_in("バージイン", mode="hard_nonstop_wav") #バージンは初回言わないバグがあるための対応
                             self.tts_pipelined.push_text(keyword_filler)
+                            #キーワードで検索してメモリーに入れる
+                            self._search_fake_memory_by_keyword(keyword, self.fake_memory_endpoint) 
                             self.is_need_wav_filler = False
                     except Exception:
                         pass
