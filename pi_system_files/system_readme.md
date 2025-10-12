@@ -113,3 +113,17 @@ pw-top
 設定解説リンク
 https://chatgpt.com/share/e/68eb3faf-ebdc-8009-8626-a01d9d539645
 
+
+# マイク変更時のソフトエコーキャンセルの設定変更
+```
+# 例：source_master を新しい alsa_input.* に変更
+load-module module-echo-cancel aec_method=webrtc \
+  source_master=<新しい_alsa_input_xxx> \
+  sink_master=alsa_output.usb-C-Media_Electronics_Inc._USB_Audio_Device-00.analog-stereo \
+  source_name=EC.source sink_name=EC.sink
+```
+
+その後、再読み込み：
+```
+systemctl --user restart pipewire pipewire-pulse
+```

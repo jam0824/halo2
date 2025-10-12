@@ -432,7 +432,8 @@ class VoiceVoxTTSPipelined:
                         if epoch < self._player_epoch:
                             continue
                         bucket = self._results.setdefault(epoch, {})
-                        bucket[seq] = wav_bytes
+                        # 文文字数も保存して、再生時のレイテンシログに出す
+                        bucket[seq] = (wav_bytes, len(sent))
                         self._results_cv.notify_all()
                 finally:
                     with self._synth_inflight_lock:
@@ -451,7 +452,13 @@ class VoiceVoxTTSPipelined:
                     while True:
                         bucket = self._results.get(self._player_epoch, {})
                         if self._next_seq in bucket:
-                            wav_bytes = bucket.pop(self._next_seq)
+                            val = bucket.pop(self._next_seq)
+                            # 互換性のため、古い形式（bytesのみ）が来ても扱えるようにする
+                            if isinstance(val, tuple) and len(val) == 2:
+                                wav_bytes, _char_count = val
+                            else:
+                                wav_bytes = val
+                                _char_count = None
                             break  # 再生へ
 
                         # 終了判定（クローズ & 何も残っていない）
@@ -510,7 +517,12 @@ class VoiceVoxTTSPipelined:
 
                 # 初回からのレイテンシログ（必要なければ削除OK）
                 end_time = time.perf_counter()
-                print(f"[VoiceVox latency] {end_time - start_time:.1f} s")
+                elapsed = end_time - start_time
+                if _char_count is not None:
+                    print(f"[VoiceVox latency] {elapsed:.1f} s, chars={_char_count},speed={_char_count/elapsed:.1f}chars/s")
+                else:
+                    print(f"[VoiceVox latency] {elapsed:.1f} s")
+                start_time = end_time
 
                 # 文ごとに待つと自然
                 if self._play_obj:
