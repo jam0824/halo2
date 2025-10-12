@@ -2,12 +2,14 @@
 // npm i @openai/agents
 import { Agent, run, MCPServerStdio, MCPServerStreamableHttp } from "@openai/agents";
 
-// Brave（検索）— 同一PCで子プロセス起動（stdio）
-const brave = new MCPServerStdio({
-  name: "brave",
-  // 公式なら: "npx -y @brave/brave-search-mcp-server"
-  fullCommand: "npx -y brave-search-mcp",
-  env: { BRAVE_API_KEY: process.env.BRAVE_API_KEY },
+// Tavily（検索/抽出/サイトマップ/クロール）— リモートHTTP/SSEで接続
+const tavily = new MCPServerStreamableHttp({
+  name: "tavily",
+  url:
+    process.env.TAVILY_MCP_URL // 例: 自前プロキシや mcp-remote を噛ませる場合
+    || `https://mcp.tavily.com/mcp/?tavilyApiKey=${process.env.TAVILY_API_KEY}`,
+  // 認証ヘッダで渡すことも可（クライアントが対応していれば）
+  // requestInit: { headers: { Authorization: `Bearer ${process.env.TAVILY_API_KEY}` } },
 });
 
 // Playwright（ブラウザ操作）— ngrok の公開URLへ HTTP/SSE で接続
@@ -47,8 +49,7 @@ async function connectSafe(server, name) {
 
 const listServers = [];
 listServers.push(await connectSafe(switchbot, "switchbot"));
-listServers.push(await connectSafe(brave, "brave"));
-listServers.push(await connectSafe(playwright, "playwright"));
+listServers.push(await connectSafe(tavily, "tavily"));
 listServers.push(await connectSafe(spotify, "spotify"));
 const activeServers = listServers.filter(Boolean);
 
@@ -58,12 +59,15 @@ try {
     model: "gpt-4o-mini",
     instructions: `
 あなたはMCPツールを使ってユーザーの依頼を解決します。
-- Web/ニュース/画像の検索: 「brave」
-- 実ブラウザ操作: 「playwright」
+- 高精度なWeb検索/要約/抽出/サイト構造化/クロール: 「tavily」
 - 音楽の検索/再生/キュー/プレイリスト操作: 「spotify」
 - 電気の操作: 「switchbot」
-- 出典URLや実行手順を簡潔に示し、日本語で答える。
-- あなたはガンダムのハロです。ハロ、電気をつけた。など片言で返信する。`,
+- 日本語で答える。
+- 検索やクロール結果は分かりやすく簡潔な概要にまとめる。
+- 出典やURLは削除して返信する。
+- 結果からは改行を削除し、一行で返信する。
+- あなたはガンダムのハロです。ハロ、電気をつけた。など片言で返信する。
+- 一人称はハロです。`,
     mcpServers: activeServers,
   });
 
@@ -73,14 +77,16 @@ try {
   const result = await run(agent, query);
 
   process.stdout.write(JSON.stringify({ output: result.finalOutput }) + "\n");
+  await agent.close?.();
 } catch (e) {
   console.error(e?.stack || String(e));
   process.exitCode = 1;
 } finally {
   const listToClose = [];
-  if (activeServers.includes(brave)) listToClose.push(brave.close());
+  if (activeServers.includes(tavily)) listToClose.push(tavily.close());
   if (activeServers.includes(playwright)) listToClose.push(playwright.close());
   if (activeServers.includes(spotify)) listToClose.push(spotify.close());
   if (activeServers.includes(switchbot)) listToClose.push(switchbot.close());
   await Promise.allSettled(listToClose);
+  process.exit(0);
 }

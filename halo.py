@@ -284,8 +284,8 @@ class Halo:
                     if self.check_farewell(user_text):
                         break
                     # 文章のチェックして、正しいユーザー発話ではない場合はcontinue
-                    #if self.check_sentence(user_text, self.response):
-                    #    continue
+                    if self.check_sentence(user_text, self.response):
+                        continue
 
                     # パイプライン再生開始
                     self.tts_pipelined.stop_play_object() # 前回の話を止めて割り込む場合
@@ -475,11 +475,13 @@ class Halo:
 
     def check_sentence(self, user_text: str, response: str) -> bool:
         if len(user_text) > self.stt_max_len:
-            print(f"ユーザー発話がしきい値を超えています :txt: {user_text} :threshold: {self.stt_max_len}")
+            print(f"ユーザー発話が最大文字数を超えています :txt: {user_text} :threshold: {self.stt_max_len}")
             return True
+        """
         if self.is_similarity_threshold(user_text, response):
             print(f"類似度がしきい値を超えています :txt: {user_text} :response: {response}")
             return True
+        """
         """
         if self.is_coherence_threshold(user_text, self.coherence_threshold):
             print(f"破綻がしきい値を超えています :txt: {user_text} :threshold: {self.coherence_threshold}")
