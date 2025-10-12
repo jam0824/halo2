@@ -205,12 +205,14 @@ class Halo:
                     
                     self.stop_led()
 
+                    '''
                     # VADで発話を検出
                     if not self.is_vad(
                         self.config, 
                         self.config["vad"]["min_consecutive_speech_frames"]):
                         time.sleep(0.1)
                         continue
+                    '''
 
                     self.is_need_wav_filler = True  #wav再生のフィラーをリセットしておく
                     is_kaigyo = False  #改行が含まれているかどうか
@@ -218,7 +220,7 @@ class Halo:
                     # ユーザー発話認識(キーワード取得)
                     user_text = self.listen_with_nouns()
                     if not user_text or user_text == "":
-                        time.sleep(0.1)
+                        time.sleep(0.01)
                         continue
                     # ユーザー発話認識のテキスト変更(春→ハロなど)
                     user_text = self.halo_helper.apply_text_changes(user_text, self.change_name)
@@ -228,8 +230,8 @@ class Halo:
                     if self.check_farewell(user_text):
                         break
                     # 文章のチェックして、正しいユーザー発話ではない場合はcontinue
-                    if self.check_sentence(user_text, self.response):
-                        continue
+                    #if self.check_sentence(user_text, self.response):
+                    #    continue
 
                     # パイプライン再生開始
                     self.tts_pipelined.stop_play_object() # 前回の話を止めて割り込む場合

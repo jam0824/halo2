@@ -56,3 +56,74 @@ sudo loginctl enable-linger pi  # ブート時にユーザーサービス起動
 systemctl --user stop halo.service
 systemctl --user disable halo.service
 ```
+
+
+# pipeWireの設定
+PipeWire で WebRTC AEC を使う（推奨）
+Raspberry Pi OS BookwormならPipeWireが標準です。以下はシンプルな有効化例です。
+
+必要パッケージ
+```
+sudo apt update
+sudo apt install pipewire-audio pipewire-pulse libspa-0.2-modules
+```
+
+※ libspa-0.2-modules に WebRTC AEC 実装が入っています。
+
+フィルタノードを追加（ユーザー設定）
+~/.config/pipewire/filter-chain.conf.d/aec.conf を作成して、概念的にはこんな内容を置きます（デバイス名は後述のコマンドで確認して置き換え）:
+
+```
+context.modules = [
+  { name = libpipewire-module-filter-chain
+    args = {
+      node.description = "Echo Cancel (WebRTC)"
+      media.name = "Echo Cancel (WebRTC)"
+      filter.graph = {
+        nodes = [
+          { type = builtin name = aec plugin = webrtc-aec }
+        ]
+      }
+      # マイク（先に判明していたキャプチャ）
+      capture.props  = { node.name = "alsa_input.usb-C-Media_Electronics_Inc._USB_PnP_Sound_Device-00.analog-mono-67" }
+      # スピーカー（今回わかった再生デバイス）
+      playback.props = { node.name = "alsa_output.usb-C-Media_Electronics_Inc._USB_Audio_Device-00.analog-stereo" }
+      node.props = { node.name = "echo-cancel.webrtc" }
+    }
+  }
+]
+
+```
+
+再起動またはPipeWire再読み込み
+```
+systemctl --user restart pipewire pipewire-pulse
+```
+
+ソース/シンクの確認
+```
+pw-cli ls Node | grep -i echo
+pw-top
+```
+
+出てきた「Echo Cancel」ソースを録音デバイスとして選択します（アプリ側でデバイス名を指定）。
+
+補足: アプリがPulseAudio APIを使っている場合でも、pipewire-pulse互換で動くはずです。
+
+設定解説リンク
+https://chatgpt.com/share/e/68eb3faf-ebdc-8009-8626-a01d9d539645
+
+
+# マイク変更時のソフトエコーキャンセルの設定変更
+```
+# 例：source_master を新しい alsa_input.* に変更
+load-module module-echo-cancel aec_method=webrtc \
+  source_master=<新しい_alsa_input_xxx> \
+  sink_master=alsa_output.usb-C-Media_Electronics_Inc._USB_Audio_Device-00.analog-stereo \
+  source_name=EC.source sink_name=EC.sink
+```
+
+その後、再読み込み：
+```
+systemctl --user restart pipewire pipewire-pulse
+```
