@@ -214,8 +214,8 @@ class Halo:
                         continue
                     '''
 
-                    self.is_need_wav_filler = True  #wav再生のフィラーをリセットしておく
-                    is_kaigyo = False  #改行が含まれているかどうか
+                    self.is_need_wav_filler = True  #wav再生のフィラーフラグをリセットしておく
+                    is_kaigyo = False  #改行が含まれているかどうかのフラグリセット
 
                     # ユーザー発話認識(キーワード取得)
                     user_text = self.listen_with_nouns()
@@ -282,14 +282,6 @@ class Halo:
                     # コマンドがあれば実行
                     self.exec_command(self.command)
                     
-                    '''
-                    response_text = self.llm.generate_text(self.llm_model, user_text, system_memory, self.history)
-                    self.response = response_text
-
-                    # 応答読み上げは非同期で行う
-                    #self.speak_async(self.response)
-                    self.tts_pipelined.push_text(self.response)
-                    '''
                     time_out = time.time() + self.run_timeout_sec    # タイムアウト時間を更新
 
                 except KeyboardInterrupt:
@@ -323,6 +315,8 @@ class Halo:
                 print(f"[interim] {txt}")
                 def _task():
                     try:
+                        if not self.isfiller:
+                            return
                         # 普通名詞・固有名詞でフィラーを生成
                         keyword_filler = asyncio.run(self.janome.make_keyword_filler_async(txt, self.your_name))
                         if keyword_filler != "":
