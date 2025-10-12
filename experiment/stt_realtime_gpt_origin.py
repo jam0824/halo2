@@ -4,8 +4,6 @@ import pyaudio
 import numpy as np
 import base64
 import json
-import wave
-import io
 import os
 
 API_KEY = os.environ.get('OPENAI_API_KEY')
@@ -193,13 +191,26 @@ async def stream_audio_and_receive_response():
             "type": "session.update",
             "session": {
                 "modalities": ["audio", "text"],
-                "instructions": "あなたはガンダムに出てくるハロです。ハロは片言で話します。短く話します。1文または2文で返してください。例：ハロ、わかった。今日、なにする？",
+                "instructions": "あなたはおしゃべり上手です。話を盛り上げてください。",
                 "voice": "cedar",
-                "turn_detection": {"type": "none"}
+                "turn_detection": {"type": "server_vad"}
             }
         }
         await websocket.send(json.dumps(session_update))
         print("セッション設定を送信しました。")
+
+        # 応答を確認
+        while True:
+            msg = await websocket.recv()
+            data = json.loads(msg)
+            etype = data.get("type")
+            if etype == "session.updated":
+                print("<< session.updated を受信しました")
+                print(json.dumps(data, indent=2, ensure_ascii=False))
+                break
+            elif etype == "error":
+                print("<< エラー:", data)
+                break
         
         # PyAudioの設定
         CHUNK = 2048          # マイクからの入力データのチャンクサイズ
