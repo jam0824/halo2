@@ -38,8 +38,6 @@ class CommandSelector:
         self._car_connected: bool = False
 
     def _ensure_loop(self) -> None:
-        if not self.use_bluetooth:
-            return
         if self._loop is None:
             self._loop = asyncio.new_event_loop()
             self._loop_thread = threading.Thread(target=self._loop.run_forever, daemon=True)
