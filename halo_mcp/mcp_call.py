@@ -66,6 +66,6 @@ if __name__ == "__main__":
     client = MCPClient()
     # ans = asyncio.run(client.call("https://news.ycombinator.com にアクセスして、'new' を開いてタイトルを3件教えて。そのあと30秒待って"))
     # ans = asyncio.run(client.call("超魔界村について調べて"))
-    ans = asyncio.run(client.call("switchbotを使って電気をオン"))
+    ans = asyncio.run(client.call("tavilyでぼっちちゃんについて調べて"))
     print("=== Python received ===")
     print(ans)
