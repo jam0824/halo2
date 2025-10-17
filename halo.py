@@ -33,6 +33,7 @@ class Halo:
         self.owner_name: str = self.config["owner_name"]
         self.your_name: str = self.config["your_name"]
         self.run_timeout_sec: int = self.config["run_timeout_sec"]
+        self.timer_speak_timeout_sec: float = self.config["timer_speak_timeout_sec"]
         self.stt_max_len: int = self.config["stt_max_len"]
         self.stt_type: str = self.config["stt"]
         self.llm_model: str = self.config["llm"]
@@ -259,6 +260,7 @@ class Halo:
     def run(self) -> None:
         print("========== 話しかけてください。Ctrl+Cで終了します。 ==========")
         time_out = time.time() + self.run_timeout_sec
+        timer_speak_timeout = time.time() + self.timer_speak_timeout_sec
 
         try:
             while True:
@@ -266,8 +268,13 @@ class Halo:
                     if time.time() >= time_out:
                         print(f"タイムアウト({self.run_timeout_sec}s)により終了します。")
                         break
-                    
                     self.stop_led()
+
+                    if time.time() >= timer_speak_timeout:
+                        self.response = self._timer_speak("今日のイベントについて詳しい説明をしてください")
+                        self.history = self.halo_helper.append_history(self.history, self.your_name, self.response)
+                        timer_speak_timeout = time.time() + self.timer_speak_timeout_sec
+                        continue
 
                     '''
                     # VADで発話を検出
@@ -347,6 +354,7 @@ class Halo:
                     self.exec_command(self.command)
                     
                     time_out = time.time() + self.run_timeout_sec    # タイムアウト時間を更新
+                    timer_speak_timeout = time.time() + self.timer_speak_timeout_sec
 
                 except KeyboardInterrupt:
                     print("\n\n音声認識ループが中断されました")
@@ -369,6 +377,18 @@ class Halo:
                 self.motor_controller.stop_motor()
             except Exception:
                 pass
+
+    # ---------- timer speak ----------
+    def _timer_speak(self, text: str) -> None:
+        system_memory = self.system_content + self.fake_memory_text + self.search_memory_text + self.event_text
+        speak_text = self.llm.generate_text(self.llm_model, text, system_memory, self.history)
+        print(speak_text)
+        self.tts_pipelined.talk_resume()
+        self.tts_pipelined.push_text(speak_text)
+        self.motor_controller.motor_pan_kyoro_kyoro(1, 2)
+        return speak_text
+
+
 
     # ---------- stt ----------
     def listen_with_nouns(self) -> str:

@@ -6,6 +6,7 @@
   "wakeup_word": ".*(ハロ|しゃべり|喋|話).*",
   "farewell_word": ".*(バイバイ|さようなら|終了).*",
   "run_timeout_sec": 99999,
+  "timer_speak_timeout_sec": 180.0,
   "stt_max_len": 50,
   "voiceVoxTTS": {
     "base_url": " https://prevalid-unacrimoniously-leigh.ngrok-free.app",
