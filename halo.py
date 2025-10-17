@@ -75,6 +75,8 @@ class Halo:
         self.fake_memory_text = self.get_fake_diary_text(self.config)
         self.fake_summary_text = self.get_fake_summary_text(self.config)
         self.search_memory_text = ""
+        # event text
+        self.event_text = self._get_event_text()
         
         self.corr_gate = self.init_corr_gate(self.config.get("vad", {}))
         self.tts = self.init_tts(self.tts_config)
@@ -121,6 +123,14 @@ class Halo:
         except Exception as e:
             print(f"Spotify refresh でエラー: {e}")
         return
+
+    # ---------- get event text ----------
+    def _get_event_text(self) -> str:
+        try:
+            return self.halo_helper.read_file_text("event_prompt.md")
+        except Exception as e:
+            print(f"event_prompt.md 取得エラー: {e}")
+            return ""
 
     # ---------- get fake memory ----------
     def get_fake_diary_text(self, config: dict) -> str:
@@ -307,7 +317,7 @@ class Halo:
                         print(f"コマンド実行エラー: {e}")
 
                     print("LLMで応答を生成中...")
-                    system_memory = self.system_content + self.fake_memory_text + self.search_memory_text
+                    system_memory = self.system_content + self.fake_memory_text + self.search_memory_text + self.event_text
                     self.response = ""
                     for delta in self.llm.stream_generate_text(self.llm_model, user_text, system_memory, self.history):
                         if not delta:
