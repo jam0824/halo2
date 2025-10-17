@@ -5,10 +5,10 @@
   "llm": "gpt-4o-mini",
   "wakeup_word": ".*(ハロ|しゃべり|喋|話).*",
   "farewell_word": ".*(バイバイ|さようなら|終了).*",
-  "run_timeout_sec": 120,
+  "run_timeout_sec": 99999,
   "stt_max_len": 50,
   "voiceVoxTTS": {
-    "base_url": "http://57.180.156.193",
+    "base_url": " https://prevalid-unacrimoniously-leigh.ngrok-free.app",
     "speaker": 89,
     "max_len": 80,
     "queue_size": 4,
