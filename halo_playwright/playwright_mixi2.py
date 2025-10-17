@@ -34,7 +34,8 @@ class MixiClient:
         self.context.storage_state(path=self.storage_path)
 
     def post(self, text: str):
-        self.page.get_by_text("ポスト", exact=False).first.click()
+        # self.page.get_by_text("ポスト", exact=False).first.click()
+        self.page.get_by_role("button", name="ポスト").click()
         self.page.locator('[data-placeholder="今なにしてる？"]').fill(text)
         self.page.locator('[aria-label="送信"]').click()
         self.context.storage_state(path=self.storage_path)
