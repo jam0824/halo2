@@ -1,95 +1,126 @@
 import os
-import asyncio
-import base64
 import json
-import numpy as np
+import base64
+import asyncio
+import signal
 import sounddevice as sd
 import websockets
-import sys
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-MODEL = os.getenv("OPENAI_REALTIME_MODEL", "gpt-realtime")
+MODEL = os.getenv("OPENAI_REALTIME_MODEL", "gpt-4o-realtime-preview-2024-12-17")
 WS_URL = f"wss://api.openai.com/v1/realtime?model={MODEL}"
 
-SAMPLE_RATE = 24000   # Realtime の推奨に合わせる
+SAMPLE_RATE = 16000
 CHANNELS = 1
-BLOCK_SECONDS = 2.5   # 録音区間（短めでOK）
+DTYPE = "int16"       # PCM16
+CHUNK_MS = 100        # 100msごとに送る
+
+_stop = asyncio.Event()
+def _handle_sigint(*_): _stop.set()
+
+async def session_update(ws):
+    await ws.send(json.dumps({
+        "type": "session.update",
+        "session": {
+            "modalities": ["text"],
+            "input_audio_format": "pcm16",
+            "input_audio_transcription": {"model": "whisper-1", "language": "ja"},
+            "turn_detection": {
+                "type": "server_vad",
+                "threshold": 0.6,
+                "prefix_padding_ms": 300,
+                "silence_duration_ms": 500,
+                "create_response": True,
+            },
+            "instructions": "常に日本語で、簡潔に答えてください。",
+        }
+    }))
+
+async def audio_producer(q: asyncio.Queue):
+    blocksize = int(SAMPLE_RATE * CHUNK_MS / 1000)
+
+    def callback(indata, frames, time, status):
+        if status:
+            print(f"[sd] {status}", flush=True)
+        # CFFI バッファ -> bytes へ変換して積む
+        try:
+            q.put_nowait(bytes(indata))
+        except asyncio.QueueFull:
+            pass
+
+    with sd.RawInputStream(
+        samplerate=SAMPLE_RATE,
+        channels=CHANNELS,
+        dtype=DTYPE,
+        blocksize=blocksize,
+        callback=callback,
+    ):
+        await _stop.wait()
+
+async def audio_uploader(ws, q: asyncio.Queue):
+    while not _stop.is_set():
+        try:
+            chunk = await asyncio.wait_for(q.get(), timeout=0.1)
+        except asyncio.TimeoutError:
+            continue
+        b64 = base64.b64encode(chunk).decode("ascii")
+        await ws.send(json.dumps({
+            "type": "input_audio_buffer.append",
+            "audio": b64
+        }))
+    await ws.send(json.dumps({"type": "input_audio_buffer.commit"}))
+
+async def event_consumer(ws):
+    print("話しかけてください。無音で区切られるとモデルが応答します。Ctrl+C で終了。")
+    buf = []
+    while not _stop.is_set():
+        try:
+            raw = await asyncio.wait_for(ws.recv(), timeout=0.5)
+        except asyncio.TimeoutError:
+            continue
+        msg = json.loads(raw)
+        etype = msg.get("type")
+
+        if etype == "response.text.delta":
+            delta = msg.get("delta", "")
+            buf.append(delta)
+            print(delta, end="", flush=True)
+        elif etype == "conversation.item.input_audio_transcription.completed":
+            text = msg.get("transcript") or msg.get("text") or ""
+            if text:
+                print(f"\n[You] {text}")
+        elif etype == "response.done":
+            if buf:
+                print("\n", end="", flush=True)
+                buf.clear()
+        elif etype == "error":
+            print(f"\n[error] {msg}")
 
 async def main():
-    if not OPENAI_API_KEY:
-        print("OPENAI_API_KEY を環境変数に設定してください。", file=sys.stderr)
-        return
+    signal.signal(signal.SIGINT, _handle_sigint)
+    api_key = os.environ["OPENAI_API_KEY"]
+    headers = {"Authorization": f"Bearer {api_key}", "OpenAI-Beta": "realtime=v1"}
 
-    headers = {
-        "Authorization": f"Bearer {OPENAI_API_KEY}",
-        "OpenAI-Beta": "realtime=v1",
-    }
-
-    # ★ 重要: サブプロトコル 'realtime' を明示
     async with websockets.connect(
         WS_URL,
         additional_headers=headers,
-        subprotocols=["realtime"],
-        max_size=10 * 1024 * 1024,
+        ping_interval=20
     ) as ws:
+        print("connected. 初期化中…")
+        try:
+            _ = await asyncio.wait_for(ws.recv(), timeout=2.0)
+        except asyncio.TimeoutError:
+            pass
 
-        # --- セッション設定: 文字起こしON（出力はresponse側でtextのみ指定） ---
-        await ws.send(json.dumps({
-            "type": "session.update",
-            "session": {
-                "input_audio_transcription": {"model": "gpt-4o-transcribe"},
-                # ここで "default" の出力モードは設定せず、毎回 response.create で text を指定
-            }
-        }))
+        await session_update(ws)
+        print("VAD準備OK。録音開始。")
 
-        print("マイクから日本語で話してください（録音します）…")
-        audio = sd.rec(int(BLOCK_SECONDS * SAMPLE_RATE),
-                       samplerate=SAMPLE_RATE, channels=CHANNELS, dtype="int16")
-        sd.wait()
-        pcm16 = audio.flatten().tobytes()
-        b64audio = base64.b64encode(pcm16).decode("utf-8")
-
-        # --- 音声チャンクを投入してコミット ---
-        await ws.send(json.dumps({"type": "input_audio_buffer.append", "audio": b64audio}))
-        await ws.send(json.dumps({"type": "input_audio_buffer.commit"}))
-
-        # --- 応答生成（テキストのみ）---
-        await ws.send(json.dumps({
-            "type": "response.create",
-            "response": {
-                "modalities": ["text"],                    # ★ テキストのみ
-                "instructions": "日本語で簡潔に答えてください。"
-            }
-        }))
-
-        # --- 受信ループ：代表的なイベントを全部拾う ---
-        full_text = []
-        while True:
-            raw = await ws.recv()
-            event = json.loads(raw)
-            etype = event.get("type", "")
-
-            # デバッグ: 何が来ているか最初は必ず見ましょう
-            # print("EVENT:", etype, event)
-
-            if etype == "response.text.delta":
-                full_text.append(event.get("delta", ""))
-
-            elif etype in ("response.text.done", "response.completed", "response.done"):
-                break
-
-            elif etype == "error":
-                # サーバ側のエラー内容を表示して即終了
-                print("ERROR:", event)
-                break
-
-            # 他に response.output_* 系が来る場合もありますが、text 以外は無視
-
-        print("\n--- AIのテキスト応答（音声なし） ---")
-        print("".join(full_text).strip())
+        q = asyncio.Queue(maxsize=8)
+        tasks = [
+            asyncio.create_task(audio_producer(q)),
+            asyncio.create_task(audio_uploader(ws, q)),
+            asyncio.create_task(event_consumer(ws)),
+        ]
+        await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        pass
+    asyncio.run(main())
