@@ -1,18 +1,25 @@
-import os
+import os, sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import json
 import base64
 import asyncio
 import signal
 import sounddevice as sd
 import websockets
+from voicevox_pipelined import VoiceVoxTTSPipelined
 
-MODEL = os.getenv("OPENAI_REALTIME_MODEL", "gpt-4o-realtime-preview-2024-12-17")
+MODEL = os.getenv("OPENAI_REALTIME_MODEL", "gpt-realtime")
 WS_URL = f"wss://api.openai.com/v1/realtime?model={MODEL}"
 
 SAMPLE_RATE = 16000
 CHANNELS = 1
 DTYPE = "int16"       # PCM16
 CHUNK_MS = 100        # 100msごとに送る
+
+tts_pipelined = VoiceVoxTTSPipelined(base_url="http://192.168.1.151:50021", speaker=89, max_len=80)
+tts_pipelined.set_params(speedScale=1.0, pitchScale=0.0, intonationScale=1.0)
+tts_pipelined.start_stream(motor_controller=None, corr_gate=None, filler=None, synth_workers=3, autoplay=True)
+        
 
 _stop = asyncio.Event()
 def _handle_sigint(*_): _stop.set()
@@ -84,6 +91,7 @@ async def event_consumer(ws):
             delta = msg.get("delta", "")
             buf.append(delta)
             print(delta, end="", flush=True)
+            tts_pipelined.push_text(delta)
         elif etype == "conversation.item.input_audio_transcription.completed":
             text = msg.get("transcript") or msg.get("text") or ""
             if text:
