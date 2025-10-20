@@ -21,12 +21,23 @@ class MonoDelayBuffer:
         delay_ms: int,
         gain_direct: float = 0.707,
         gain_delayed: float = 0.707,
+        # 小さい音に合わせるダウンワード・レベリング設定（増幅はしない）
+        target_rms: float = 0.08,       # 目標RMS（-22 dBFS程度）
+        attack_ms: float = 10.0,        # 音量が上がる方向の応答（速く下げる）
+        release_ms: float = 200.0,      # 音量が下がる方向の応答（ゆっくり戻す）
+        limiter_ceiling: float = 0.98,  # クリップ前の天井
     ) -> None:
         self.samplerate = int(samplerate)
         self.delay_samples = max(1, int(self.samplerate * delay_ms / 1000))
         self.gain_direct = float(gain_direct)
         self.gain_delayed = float(gain_delayed)
         self._delay_line: Optional[np.ndarray] = None
+        # レベリング内部状態
+        self.target_rms = float(target_rms)
+        self.attack_ms = float(attack_ms)
+        self.release_ms = float(release_ms)
+        self.limiter_ceiling = float(limiter_ceiling)
+        self._current_gain = 1.0
 
     def process_float32(self, x: np.ndarray) -> np.ndarray:
         if self._delay_line is None:
@@ -37,8 +48,29 @@ class MonoDelayBuffer:
         y_delayed = concat[: x.shape[0]]
         self._delay_line = concat[-self.delay_samples :]
         y_mix = self.gain_direct * x + self.gain_delayed * y_delayed
-        np.clip(y_mix, -1.0, 1.0, out=y_mix)
-        return y_mix
+
+        # --- Downward leveling: 小さい音に合わせる（増幅しない） ---
+        eps = 1e-8
+        rms = float(np.sqrt(np.mean(y_mix * y_mix) + eps))
+        # 目標より大きい時だけ減衰。小さい時はゲイン<=1.0に留める
+        desired_gain = min(1.0, self.target_rms / max(rms, eps))
+
+        # ブロック長に基づく平滑化係数
+        block_len = y_mix.shape[0]
+        def _coef(ms: float) -> float:
+            tau = max(ms, 1e-3) / 1000.0
+            return float(np.exp(-block_len / (self.samplerate * tau)))
+
+        if desired_gain < self._current_gain:
+            a = _coef(self.attack_ms)   # 速く下げる
+        else:
+            a = _coef(self.release_ms)  # ゆっくり戻す（上げすぎない=最大1.0）
+        self._current_gain = a * self._current_gain + (1.0 - a) * desired_gain
+
+        y_lvl = y_mix * self._current_gain
+        # セーフティ・リミット
+        np.clip(y_lvl, -self.limiter_ceiling, self.limiter_ceiling, out=y_lvl)
+        return y_lvl
 
     def process_int16_bytes(self, pcm16_bytes: bytes) -> bytes:
         x_i16 = np.frombuffer(pcm16_bytes, dtype=np.int16)
