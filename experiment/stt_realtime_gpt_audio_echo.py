@@ -10,6 +10,8 @@ import sys
 # 同ディレクトリの遅延ミキサーをimport可能にする
 sys.path.insert(0, os.path.dirname(__file__))
 from stream_play_double_line_delay import MonoDelayBuffer
+COOLDOWN_AFTER_ASSISTANT_MS = 300  # 応答完了後のマイク再開待機
+
 
 API_KEY = os.environ.get('OPENAI_API_KEY')
 #わからない人は、上の行をコメントアウトして、下記のように直接API KEYを書き下してもよい
@@ -59,7 +61,7 @@ async def send_audio(websocket, stream, CHUNK, RATE, mic_enabled_event: asyncio.
     silence_ms_after_voice = 0.0
     chunk_ms = 1000.0 * CHUNK / RATE
     speech_ms = 0.0
-    min_speech_ms = 250.0  # 最低発話長（誤起動抑制）
+    min_speech_ms = 350.0  # 最低発話長（誤起動抑制強化）
 
     while True:
         # アシスタント再生中は送信停止
@@ -94,12 +96,12 @@ async def send_audio(websocket, stream, CHUNK, RATE, mic_enabled_event: asyncio.
 
         # 簡易VAD: 音声開始→終了でcommitし、応答生成を起動
         if not voice_started:
-            if is_voice(audio_data):
+            if is_voice(audio_data, threshold=1000.0):
                 voice_started = True
                 silence_ms_after_voice = 0.0
                 speech_ms = 0.0
         else:
-            if is_voice(audio_data):
+            if is_voice(audio_data, threshold=1000.0):
                 silence_ms_after_voice = 0.0
                 speech_ms += chunk_ms
             else:
@@ -146,12 +148,14 @@ async def receive_audio(websocket, output_stream, input_stream, mic_enabled_even
             # 音声が無い応答（テキストのみ）の場合はここで終了扱い
             if not assistant_speaking:
                 await websocket.send(json.dumps({"type": "input_audio_buffer.clear"}))
+                await asyncio.sleep(COOLDOWN_AFTER_ASSISTANT_MS / 1000.0)
                 awaiting_response.clear()
                 mic_enabled_event.set()
 
         elif "type" in response_data and response_data["type"] == "response.completed":
             # 応答完了: サーバ側バッファをクリアし、マイク再開
             await websocket.send(json.dumps({"type": "input_audio_buffer.clear"}))
+            await asyncio.sleep(COOLDOWN_AFTER_ASSISTANT_MS / 1000.0)
             awaiting_response.clear()
             mic_enabled_event.set()
 
@@ -176,6 +180,7 @@ async def receive_audio(websocket, output_stream, input_stream, mic_enabled_even
         # 音声出力の完了イベント
         if "type" in response_data and response_data["type"] in ("response.audio.done", "response.completed", "response.output_text.done"):
             await websocket.send(json.dumps({"type": "input_audio_buffer.clear"}))
+            await asyncio.sleep(COOLDOWN_AFTER_ASSISTANT_MS / 1000.0)
             awaiting_response.clear()
             mic_enabled_event.set()
             assistant_speaking = False
@@ -197,9 +202,13 @@ async def stream_audio_and_receive_response():
             "type": "session.update",
             "session": {
                 "modalities": ["audio", "text"],
-                "instructions": "あなたはおしゃべり上手です。話を盛り上げてください。",
-                "voice": "cedar",
-                "turn_detection": {"type": "server_vad"}
+                "instructions": "英語で話してください。あなたはおしゃべり上手です。話を盛り上げてください。",
+                "voice": "sage",
+                "turn_detection": {
+                    "type": "semantic_vad",
+                    "create_response": False,
+                    "interrupt_response": False
+                },
             }
         }
         await websocket.send(json.dumps(session_update))

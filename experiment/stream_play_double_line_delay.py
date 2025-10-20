@@ -86,7 +86,7 @@ class MonoDelayMixPlayer:
 
     async def run(self) -> None:
         signal.signal(signal.SIGINT, self._handle_sigint)
-        blocksize = max(1, int(self.samplerate * 0.01))
+        blocksize = max(1, int(self.samplerate * 0.02))
 
         with sd.Stream(
             samplerate=self.samplerate,
