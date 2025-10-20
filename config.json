@@ -9,7 +9,7 @@
   "timer_speak_timeout_sec": 180.0,
   "stt_max_len": 50,
   "voiceVoxTTS": {
-    "base_url": " https://prevalid-unacrimoniously-leigh.ngrok-free.app",
+    "base_url": "http://192.168.1.151:50021",
     "speaker": 89,
     "max_len": 80,
     "queue_size": 4,
@@ -18,7 +18,7 @@
     "intonationScale": 1.0
   },
   "filler":{
-    "use_filler": true,
+    "use_filler": false,
     "filler_dir": "./filler"
   },
   "led":{
